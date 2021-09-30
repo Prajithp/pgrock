@@ -1,5 +1,5 @@
 package Proxy::Server;
-use Mojo::Base 'Mojo::EventEmitter';
+use Mojo::Base -base;
 
 use Mojo::IOLoop;
 
@@ -8,6 +8,7 @@ use Proxy::Server::HTTP;
 
 has address => '0.0.0.0';
 has port => '1080';
+has http_port => '8080';
 
 sub start {
     my $self = shift;
@@ -24,7 +25,7 @@ sub start {
             vhost => $http_server
         );
     });
-    say "Server started";
+    say sprintf("Server started on tcp://%s:%s", $self->address, $self->port);
     Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
 }
 
@@ -32,9 +33,8 @@ sub listen_http {
     my $self = shift;
 
     my $http = Proxy::Server::HTTP->new(
-        port => 8080
+        port => $self->http_port
     );
-
     return $http;
 }
 

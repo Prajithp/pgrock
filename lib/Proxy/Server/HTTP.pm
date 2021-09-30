@@ -1,5 +1,5 @@
 package Proxy::Server::HTTP;
-use Mojo::Base 'Mojo::EventEmitter';
+use Mojo::Base -base;
 
 use Mojo::IOLoop;
 use Mojo::Message::Request;
@@ -21,10 +21,10 @@ sub new {
             my $req = Mojo::Message::Request->new;
             $req->parse($bytes);
             my $vhost = $req->headers->host;
+            
             my $stream_id = $self->clients->{$vhost};
             if (defined $stream_id) {
                 Mojo::IOLoop->stream($stream_id)->write($bytes);
-
                 Mojo::IOLoop->stream($stream_id)->on('read' => sub{
                     my ($c_stream, $chunk) = @_;
                     $stream->write($chunk);
@@ -50,6 +50,13 @@ sub add {
     $clients->{$domain} = $id;
 
     return $self;
+}
+
+sub remove {
+    my ($self, $domain) = @_;
+    
+    my $clients = $self->clients;
+    delete $clients->{$domain} if exists $clients->{$domain};
 }
 
 1;
