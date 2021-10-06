@@ -1,0 +1,8 @@
+#!/usr/bin/env perl
+
+use Pgrock::CLI;
+
+my $s = Pgrock::CLI->new;
+$s->run(@ARGV);
+
+
