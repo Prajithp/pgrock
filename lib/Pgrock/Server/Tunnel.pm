@@ -16,16 +16,29 @@ sub new {
         my ($loop, $stream, $id) = @_;
         $stream->timeout(0);
 
-        my $identifier = Pgrock::Server::Utils::random_name();
-        $self->hub->add($identifier, $id);
-
         $stream->on('close' => sub {
-            $self->hub->remove($identifier, $id); 
-            $self->logger->info("Client closed the connection");  
+            $self->logger->debug("Client closed the connection - $id");
+            $self->emit('close', $id);
         });
-        
-        $self->emit('accept', $stream, $identifier);
+
+        $stream->on('read' => sub {
+            my ($stream, $chunks) = @_;
+            my $message = Pgrock::Message->parse($chunks);
+
+            if ($message->type eq 'acceptProxy') {
+                $self->emit('acceptProxy', $stream, $message->bytes, $id);
+            }
+            elsif ($message->type eq 'init') {
+                $self->emit('init', $stream, $id, $message->bytes);
+            }
+            else {
+                $self->emit('forward', $stream, $message->bytes);
+            }
+        });
+
+        $self->emit('accept', $stream, $id);
     });
+    say sprintf("Tunnel server running on tcp://%s:%s", $self->address, $self->port);
     return $self;
 }
 

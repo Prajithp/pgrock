@@ -1,58 +1,69 @@
 package Pgrock::Server::HTTP;
 
 use Mojo::Base 'Mojo::EventEmitter';
-use Mojo::Server::Daemon;
-
+use Mojo::IOLoop;
+use Mojo::Message::Request;
+use Mojo::Message::Response;
 
 has 'port'    => '8080';
 has 'address' => '0.0.0.0';
 has [qw< hub logger >];
 
-has server => sub {
-    my $self = shift;
-
-    my $listen = sprintf('http://%s:%s', $self->address, $self->port);
-    return Mojo::Server::Daemon->new(
-        listen => [$listen],
-    );
-};
+has connections => sub { +{} };
 
 sub new {
     my $self = shift->SUPER::new(@_);
 
-    $self->server->unsubscribe('request')->on(request => sub {
-        my ($daemon, $tx) = @_;
+        my $id = Mojo::IOLoop->server({port => $self->port} => sub {
+            my ($loop, $stream, $id) = @_;
+            $self->connections->{$id}->{'request'} = Mojo::Message::Request->new; 
+            
+            $stream->on('read' => sub {
+                my ($stream, $bytes) = @_;
+                my $request = $self->connections->{$id}->{'request'};
+                $request->parse($bytes);
+                
+                if ($request->is_handshake) {
+                    $stream->timeout(300);
+                    my $proxy_id = $self->connections->{$id}->{'proxy_stream'};
+                    if ($proxy_id) {
+                        Mojo::IOLoop->stream($proxy_id)->write($bytes);
+                        return; 
+                    }
+                }
+                
+                if ($request->is_finished) {
+                    if ( my $vhost = $request->headers->host ) {
+                        my $identifier = (split /\./, $vhost)[0];
+                        return $self->fail($stream) if !$identifier;
+                        my $manager_id = $self->hub->get($identifier);
+                        return $self->fail($stream) if !$manager_id;
+                        $self->connections->{$id}->{'identifier'} = $identifier;
+                        $self->emit('connection', $stream, $identifier, $id);
+                    }
+                    else { 
+                        return $self->fail($stream); 
+                    }
+                }
+            });
+            $stream->on(close => sub { 
+                my $proxy_id = $self->connections->{$id}->{'proxy_stream'};
+                Mojo::IOLoop->remove($proxy_id) if $proxy_id;
+                delete $self->connections->{$id};
+            });
+        });
 
-        if (my $vhost = $tx->req->headers->host) {;
-            my $identifier = (split /\./, $vhost)[0] ;
-            return $self->fail($tx) unless $identifier;
-
-            $self->emit('proxy', $identifier, $tx);
-        }
-        else {
-            return $self->fail($tx);
-        }
-    });
+        say sprintf("Webserver running on http://%s:%s",$self->address, $self->port);
     return $self;
 }
 
 sub fail {
-    my ($self, $tx) = @_;
+    my ($self, $stream) = @_;
 
-    $tx->res->code(404);
-    $tx->res->headers->content_type('text/plain');
-    $tx->res->body("Not found");
-    $tx->resume;
-}
-
-sub run {
-  my $self = shift;
-
-  my $loop = $self->server->ioloop;
-  my $int  = $loop->recurring(1 => sub { });
-  local $SIG{INT} = local $SIG{TERM} = sub { $loop->stop };
-  $self->server->start->ioloop->start;
-  $loop->remove($int);
+    my $response = Mojo::Message::Response->new();
+    $response->code(404);
+    $response->headers->content_type('text/plain');
+    $response->body("Not found");
 }
 
 1;

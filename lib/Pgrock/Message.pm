@@ -6,13 +6,10 @@ use Mojo::JSON qw<encode_json decode_json>;
 has [qw< bytes type >];
 
 sub parse {
-    my ($self, $chunks) = @_;
+    my ($class, $chunks) = @_;
 
     my $struct = decode_json($chunks);
-    for my $attr (qw< bytes type >) {
-        $self->{$attr} = $struct->{$attr} if exists $struct->{$attr};
-    }
-    return $self;
+    return __PACKAGE__->new($struct);
 }
 
 sub to_json {
