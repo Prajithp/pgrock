@@ -12,7 +12,13 @@ sub new {
 
     $self->{'client'} = Mojo::IOLoop->client(port => $self->local_port, 
         sub {
-            my ($loop, $err, $stream) = @_;
+            my ($loop, $error, $stream) = @_;
+
+            if (defined $error) {
+                $self->emit('error', undef);
+                return;
+            }
+
             $stream->timeout(300);
 
             $stream->on('read' => sub {

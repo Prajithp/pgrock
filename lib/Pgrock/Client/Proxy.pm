@@ -3,6 +3,7 @@ package Pgrock::Client::Proxy;
 use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
 use Pgrock::Message;
+use Mojo::Message::Response;
 
 has [qw< server_addr server_port local_port identifier>];
 has 'logger' => sub { Mojo::Log->new; };
@@ -23,8 +24,26 @@ sub new {
 
             $stream->on('read' => sub {
                 my ($stream, $chunks) = @_;
-
                 $forwarder->write($chunks);
+            });
+
+            my $message = Pgrock::Message->new(
+                type => 'acceptProxy', bytes => $self->identifier
+            );
+            $stream->write($message->to_json);
+            
+            $forwarder->on('error' => sub {
+                my $forwarder = shift;
+
+                my $response = Mojo::Message::Response->new();
+                $response->code(503);
+                $response->headers->content_type('text/plain');
+                $response->body("Timeout");
+                my $meta = {'id' => $self->identifier, response => $response->to_string};
+                my $message = Pgrock::Message->new(
+                    type => 'proxy', bytes => $meta
+                );  
+                $stream->write($message->to_json) unless $stream->is_writing;
             });
 
             $stream->on('close' => sub {
@@ -32,11 +51,6 @@ sub new {
                 my $id = $forwarder->{'client'};
                 Mojo::IOLoop->remove($id) if $id;
             });
-
-            my $message = Pgrock::Message->new(
-                type => 'acceptProxy', bytes => $self->identifier
-            );
-            $stream->write($message->to_json);
         }
     );
     return $self;

@@ -64,6 +64,7 @@ sub fail {
     $response->code(404);
     $response->headers->content_type('text/plain');
     $response->body("Not found");
+    $stream->write($response->to_string);
 }
 
 1;
