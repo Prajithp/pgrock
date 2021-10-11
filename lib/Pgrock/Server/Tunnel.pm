@@ -12,33 +12,44 @@ has [qw<hub logger>];
 sub new {
     my $self = shift->SUPER::new(@_);
 
-    my $server = Mojo::IOLoop->server({address => $self->address, port => $self->port}, sub {
-        my ($loop, $stream, $id) = @_;
-        $stream->timeout(0);
+    my $server = Mojo::IOLoop->server(
+        { address => $self->address, port => $self->port },
+        sub {
+            my ( $loop, $stream, $id ) = @_;
+            $stream->timeout(0);
 
-        $stream->on('close' => sub {
-            $self->logger->debug("Client closed the connection - $id");
-            $self->emit('close', $id);
-        });
+            $stream->on(
+                'close' => sub {
+                    $self->logger->debug(
+                        "Client closed the connection - $id");
 
-        $stream->on('read' => sub {
-            my ($stream, $chunks) = @_;
-            my $message = Pgrock::Message->parse($chunks);
+                    $self->emit( 'close', $id );
+                }
+            );
 
-            if ($message->type eq 'acceptProxy') {
-                $self->emit('acceptProxy', $stream, $message->bytes, $id);
-            }
-            elsif ($message->type eq 'init') {
-                $self->emit('init', $stream, $id, $message->bytes);
-            }
-            else {
-                $self->emit('forward', $stream, $message->bytes);
-            }
-        });
+            $stream->on(
+                'read' => sub {
+                    my ( $stream, $chunks ) = @_;
+                    my $message = Pgrock::Message->parse($chunks);
 
-        $self->emit('accept', $stream, $id);
-    });
-    say sprintf("Tunnel server running on tcp://%s:%s", $self->address, $self->port);
+                    if ( $message->type eq 'acceptProxy' ) {
+                        $self->emit( 'accept_proxy', $stream,
+                            $message->bytes, $id );
+                    }
+                    elsif ( $message->type eq 'init' ) {
+                        $self->emit( 'init', $stream, $id, $message->bytes );
+                    }
+                    else {
+                        $self->emit( 'forward', $stream, $message->bytes );
+                    }
+                }
+            );
+
+            $self->emit( 'accept', $stream, $id );
+        }
+    );
+    say sprintf( "Tunnel server running on tcp://%s:%s",
+        $self->address, $self->port );
     return $self;
 }
 
